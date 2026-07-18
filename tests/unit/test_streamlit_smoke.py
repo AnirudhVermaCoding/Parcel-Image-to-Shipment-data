@@ -24,7 +24,16 @@ def test_streamlit_app_renders_in_fresh_process(tmp_path: Path) -> None:
     script = """
 from streamlit.testing.v1 import AppTest
 
+# The app defaults to the beginner-friendly "Simple" view, which must render
+# cleanly with no exception and without the advanced worker controls.
 app = AppTest.from_file("app.py").run(timeout=30)
+assert not app.exception, [item.message for item in app.exception]
+assert not [item for item in app.number_input if item.label == "Maximum workers"]
+
+# Switching to the "Advanced" view must also render cleanly and expose the
+# worker configuration with the expected hosted defaults.
+app.session_state["view"] = "Advanced"
+app.run(timeout=30)
 assert not app.exception, [item.message for item in app.exception]
 worker_input = next(item for item in app.number_input if item.label == "Maximum workers")
 assert worker_input.value == 2
