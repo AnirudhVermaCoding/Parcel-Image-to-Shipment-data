@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -64,8 +64,6 @@ class AppConfig:
 
     awb_clean_threshold: float = 0.90
     awb_review_threshold: float = 0.75
-    field_accept_threshold: float = 0.75
-    field_review_threshold: float = 0.50
     low_blur_threshold: float = 60.0
     low_contrast_threshold: float = 18.0
     underexposure_threshold_pct: float = 82.0
@@ -88,10 +86,8 @@ class AppConfig:
     ocr_max_label_candidates: int = 1
     calibration_version: str = "conservative-v1"
     courier_rules_path: str = "config/courier_rules.json"
-    calibration_path: str = "config/calibration.json"
 
     tesseract_cmd: str | None = None
-    extra: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -155,7 +151,6 @@ class AppConfig:
             ocr_max_label_candidates=max(1, _int_env("OCR_MAX_LABEL_CANDIDATES", 1)),
             calibration_version=calibrated_version,
             courier_rules_path=os.getenv("COURIER_RULES_PATH", "config/courier_rules.json"),
-            calibration_path=calibration_path,
             tesseract_cmd=os.getenv("TESSERACT_CMD") or None,
         )
 

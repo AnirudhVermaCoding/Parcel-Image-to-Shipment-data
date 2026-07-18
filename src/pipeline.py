@@ -19,7 +19,7 @@ from src.extraction.field_parser import normalise_awb
 from src.extraction.label_detector import LabelCandidate, detect_label_candidates
 from src.extraction.label_ocr import extract_label_text
 from src.extraction.overlay import extract_overlay
-from src.extraction.vision_fallback import VisionProvider, VisionProviderError, XaiVisionProvider
+from src.extraction.vision_fallback import VisionProvider, XaiVisionProvider
 from src.preprocessing.masks import suppress_region
 from src.reconciliation.candidates import ReconciledField, reconcile
 from src.schemas import (

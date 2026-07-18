@@ -85,7 +85,7 @@ No detector checkpoint is claimed until human annotations are complete and the v
 - ONNX Runtime and RapidOCR ONNX
 - OpenAI-compatible client configured for the xAI Responses API
 - Pytest
-- httpx and tenacity for the optional xAI provider
+- httpx for the optional xAI provider
 
 No GPU, CUDA, paid OCR service, authentication system, application server, Redis, or external database is required.
 

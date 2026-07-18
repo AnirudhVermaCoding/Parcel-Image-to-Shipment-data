@@ -20,13 +20,3 @@ def adjusted_confidence(
     if conflict:
         score -= 0.18
     return round(max(0.0, min(0.99, score)), 4)
-
-
-def confidence_band(score: float) -> str:
-    if score >= 0.90:
-        return "HIGH"
-    if score >= 0.75:
-        return "MEDIUM"
-    if score >= 0.50:
-        return "LOW"
-    return "UNRELIABLE"

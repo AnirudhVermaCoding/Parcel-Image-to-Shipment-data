@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import time
 import zipfile
 from datetime import datetime
 from pathlib import Path

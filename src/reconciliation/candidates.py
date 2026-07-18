@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.reconciliation.confidence import adjusted_confidence
 from src.schemas import ExtractionSource, FieldCandidate
@@ -12,11 +12,7 @@ class ReconciledField:
     candidate: FieldCandidate | None = None
     confidence: float = 0.0
     conflict: bool = False
-    agreeing_sources: list[ExtractionSource] = None  # type: ignore[assignment]
-
-    def __post_init__(self) -> None:
-        if self.agreeing_sources is None:
-            self.agreeing_sources = []
+    agreeing_sources: list[ExtractionSource] = field(default_factory=list)
 
 
 def reconcile(
@@ -77,4 +73,3 @@ def reconcile(
         conflict=conflict,
         agreeing_sources=sources,
     )
-
