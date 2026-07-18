@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "rules": [
+    {
+      "name": "numeric_14",
+      "pattern": "^[0-9]{14}$",
+      "context_terms": ["awb", "waybill", "tracking", "consignment"]
+    },
+    {
+      "name": "generic_alphanumeric",
+      "pattern": "^[A-Z0-9]{8,30}$",
+      "context_terms": ["awb", "waybill", "tracking", "shipment", "consignment"]
+    }
+  ]
+}

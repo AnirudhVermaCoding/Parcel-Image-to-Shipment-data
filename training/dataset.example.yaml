@@ -1,0 +1,10 @@
+path: /content/parcel-dataset
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: parcel_full
+  1: parcel_partial
+  2: shipping_label_visible
+  3: shipping_label_blocked
+  4: hand_or_obstruction

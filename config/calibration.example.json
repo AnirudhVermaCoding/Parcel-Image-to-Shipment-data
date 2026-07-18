@@ -1,0 +1,7 @@
+{
+  "version": "validation-v1",
+  "awb_clean_threshold": 0.9,
+  "validation_precision": 0.99,
+  "validation_review_rate": 0.35,
+  "frozen": false
+}
