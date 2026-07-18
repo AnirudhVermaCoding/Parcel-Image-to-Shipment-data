@@ -28,3 +28,24 @@ jobs:
         run: pip check
       - name: Run tests
         run: python -m pytest tests/unit -q
+
+  streamlit-cloud-smoke:
+    runs-on: ubuntu-latest
+    container: python:3.11-slim-trixie
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      STREAMLIT_CLOUD: "true"
+      RUNTIME_DIR: /tmp/parcel-runtime
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Streamlit Cloud system dependencies
+        run: |
+          apt-get update
+          xargs -r apt-get install -y < packages.txt
+      - name: Install Python dependencies
+        run: pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+      - name: Check dependency consistency
+        run: pip check
+      - name: Verify imports and real Streamlit startup
+        run: python -m pytest tests/unit/test_streamlit_smoke.py -q
