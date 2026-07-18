@@ -363,7 +363,7 @@ Supplied parcel images, golden manifests, expected AWBs, generated annotations, 
 1. Push this repository to GitHub.
 2. Open Streamlit Community Cloud and create an app.
 3. Select `AnirudhVermaCoding/Parcel-Image-to-Shipment-data`, branch `main`, and entrypoint `app.py`.
-4. Deploy with Python 3.11. The committed `.python-version` requests that runtime and `packages.txt` installs Tesseract.
+4. Deploy with Python 3.11. The committed `.python-version` requests that runtime and `packages.txt` installs Tesseract plus OpenCV's required Linux libraries.
 5. Open **App settings > Secrets** and paste the non-secret hosted defaults from `.streamlit/secrets.toml.example`. At minimum set:
 
    ```toml

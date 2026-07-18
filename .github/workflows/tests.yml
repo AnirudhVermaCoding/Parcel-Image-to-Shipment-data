@@ -12,6 +12,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,4 +27,4 @@ jobs:
       - name: Check dependency consistency
         run: pip check
       - name: Run tests
-        run: pytest tests/unit -q
+        run: python -m pytest tests/unit -q
