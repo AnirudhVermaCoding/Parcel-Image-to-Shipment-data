@@ -260,7 +260,23 @@ for message in st.session_state.get("validation_messages", []):
     st.warning(message)
 
 
-@st.fragment(run_every=1)
+TERMINAL_STAGES = {
+    JobStage.COMPLETED,
+    JobStage.COMPLETED_WITH_WARNINGS,
+    JobStage.FAILED,
+    JobStage.CANCELLED,
+}
+
+# Only enable the 1-second auto-refresh while a job is actually live. Leaving
+# ``run_every`` active when idle or finished keeps scheduling fragment reruns; a
+# later full-app rerun then removes the fragment before the pending timer fires,
+# which is what logs the "fragment ... does not exist anymore" warning.
+_monitor_job_id = st.session_state.get("job_id")
+_monitor_job = manager.get_job(_monitor_job_id) if _monitor_job_id else None
+_monitor_should_poll = _monitor_job is not None and _monitor_job.stage not in TERMINAL_STAGES
+
+
+@st.fragment(run_every=1 if _monitor_should_poll else None)
 def job_monitor() -> None:
     job_id = st.session_state.get("job_id")
     if not job_id:
@@ -280,12 +296,12 @@ def job_monitor() -> None:
     st.progress(min(1.0, job.progress_percentage / 100))
     if job.current_image:
         st.caption(f"Current image: {job.current_image}")
-    terminal = job.stage in {
-        JobStage.COMPLETED,
-        JobStage.COMPLETED_WITH_WARNINGS,
-        JobStage.FAILED,
-        JobStage.CANCELLED,
-    }
+    terminal = job.stage in TERMINAL_STAGES
+    if _monitor_should_poll and terminal:
+        # The job finished during a polling tick. Trigger one full-app rerun so
+        # the fragment is re-mounted with run_every disabled, cleanly stopping
+        # the auto-refresh timer instead of leaving it pending.
+        st.rerun()
     stalled = False
     if not terminal and job.last_progress_at:
         stalled_seconds = max(0, int((datetime.now() - job.last_progress_at).total_seconds()))
