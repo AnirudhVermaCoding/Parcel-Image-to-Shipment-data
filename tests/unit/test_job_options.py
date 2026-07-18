@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.jobs.manager import JobManager
+from src.config import AppConfig
 from src.schemas import (
     BatchOptions,
     ImageResult,
@@ -34,3 +35,20 @@ def test_local_only_job_overrides_globally_configured_vision(monkeypatch, test_c
     )
     assert observed == {"vision_enabled": False, "provider": None}
 
+
+def test_hosted_worker_default_is_separate_from_selectable_limit(monkeypatch) -> None:
+    monkeypatch.setenv("STREAMLIT_CLOUD", "true")
+    monkeypatch.setenv("MAX_WORKERS", "2")
+    monkeypatch.setenv("MAX_WORKER_LIMIT", "8")
+    config = AppConfig.from_env()
+    assert config.default_workers == 2
+    assert config.max_workers == 8
+
+
+def test_hosted_worker_limit_is_capped_for_memory_safety(monkeypatch) -> None:
+    monkeypatch.setenv("STREAMLIT_CLOUD", "true")
+    monkeypatch.setenv("MAX_WORKERS", "4")
+    monkeypatch.setenv("MAX_WORKER_LIMIT", "100")
+    config = AppConfig.from_env()
+    assert config.default_workers == 4
+    assert config.max_workers == 8

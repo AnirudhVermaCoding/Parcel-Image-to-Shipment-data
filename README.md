@@ -141,7 +141,7 @@ Agreement rules:
 - Per-image isolation and duplicate-result reuse.
 - Streamlit fragment polling keeps progress updates responsive.
 - Up to 500 images per job, submitted to workers in bounded chunks.
-- Two hosted workers; configurable local worker count.
+- Two workers by default, with a shared 1-8 selector for both ZIP and multi-image uploads on Streamlit Community Cloud.
 - Atomic partial CSV/JSON checkpoints after every completed image.
 - Last-progress timestamps, stall warnings, and hash-based resume of unfinished inputs.
 
@@ -222,6 +222,7 @@ STREAMLIT_CLOUD=false
 RUNTIME_DIR=runtime
 MAX_BATCH_IMAGES=500
 MAX_WORKERS=2
+MAX_WORKER_LIMIT=8
 GENERATE_ANNOTATIONS=false
 JOB_RETENTION_HOURS=24
 JOB_STUCK_SECONDS=300
@@ -369,6 +370,7 @@ Supplied parcel images, golden manifests, expected AWBs, generated annotations, 
    STREAMLIT_CLOUD = true
    MAX_BATCH_IMAGES = 500
    MAX_WORKERS = 2
+   MAX_WORKER_LIMIT = 8
    ENABLE_XAI_FALLBACK = false
    ```
 

@@ -57,6 +57,7 @@ with st.expander("Deployment diagnostics", expanded=False):
         {
             "hosted_mode": config.hosted_mode,
             "batch_limit": config.max_batch_images,
+            "worker_default": config.default_workers,
             "worker_limit": config.max_workers,
             "detector": detector_info,
             "ocr_engines_configured": list(config.ocr_engines),
@@ -163,8 +164,16 @@ with st.form("job_configuration"):
             "Maximum workers",
             min_value=1,
             max_value=max(1, config.max_workers),
-            value=max(1, config.max_workers),
+            value=max(1, min(config.default_workers, config.max_workers)),
+            help=(
+                "Controls how many images are processed concurrently for both upload modes. "
+                "Higher values use more CPU and memory; xAI calls remain separately limited."
+            ),
         )
+        if config.hosted_mode and max_workers > 4:
+            st.warning(
+                "More than 4 workers can exhaust Streamlit Community Cloud memory on large images."
+            )
     with right:
         threshold = st.number_input(
             "Clean AWB confidence",
@@ -537,7 +546,8 @@ with st.expander("Technical information", expanded=False):
             "ocr": "Tesseract; development RapidOCR fallback when installed",
             "barcode_decoder": "zxing-cpp",
             "max_batch_images": config.max_batch_images,
-            "max_workers": config.max_workers,
+            "default_workers": config.default_workers,
+            "worker_limit": config.max_workers,
             "vision_configured": bool(config.enable_xai_fallback and config.xai_api_key),
             "detector": detector_diagnostics(config),
             "calibration_version": config.calibration_version,

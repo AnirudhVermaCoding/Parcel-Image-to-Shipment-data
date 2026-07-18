@@ -41,7 +41,8 @@ class AppConfig:
     max_zip_entries: int = 500
     max_zip_uncompressed_bytes: int = 250 * 1024 * 1024
     max_zip_ratio: float = 100.0
-    max_workers: int = 2
+    default_workers: int = 2
+    max_workers: int = 8
     hosted_mode: bool = False
     generate_annotations: bool = False
     job_retention_hours: int = 24
@@ -97,6 +98,19 @@ class AppConfig:
         hosted = _bool_env("STREAMLIT_CLOUD", False)
         batch_default = 500
         worker_default = 2 if hosted else min(4, max(1, (os.cpu_count() or 2) // 2))
+        requested_default_workers = max(1, _int_env("MAX_WORKERS", worker_default))
+        requested_worker_limit = max(
+            1,
+            _int_env(
+                "MAX_WORKER_LIMIT",
+                8 if hosted else max(8, requested_default_workers),
+            ),
+        )
+        worker_limit = (
+            min(8, requested_worker_limit)
+            if hosted
+            else max(requested_default_workers, requested_worker_limit)
+        )
         engines = tuple(
             value.strip().lower()
             for value in os.getenv("OCR_ENGINES", "tesseract,rapidocr").split(",")
@@ -115,11 +129,8 @@ class AppConfig:
         return cls(
             runtime_dir=Path(os.getenv("RUNTIME_DIR", "runtime")),
             max_batch_images=_int_env("MAX_BATCH_IMAGES", batch_default),
-            max_workers=(
-                min(2, max(1, _int_env("MAX_WORKERS", worker_default)))
-                if hosted
-                else max(1, _int_env("MAX_WORKERS", worker_default))
-            ),
+            default_workers=min(requested_default_workers, worker_limit),
+            max_workers=worker_limit,
             hosted_mode=hosted,
             generate_annotations=_bool_env("GENERATE_ANNOTATIONS", False),
             awb_clean_threshold=_float_env("AWB_CLEAN_THRESHOLD", calibrated_threshold),

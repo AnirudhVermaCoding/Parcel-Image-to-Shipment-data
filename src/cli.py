@@ -24,6 +24,7 @@ def main() -> int:
     config = AppConfig.from_env()
     if args.workers:
         config.max_workers = max(1, args.workers)
+        config.default_workers = config.max_workers
     files, warnings = collect_path_inputs(args.input, config)
     for warning in warnings:
         print(f"warning: {warning}")
@@ -34,7 +35,7 @@ def main() -> int:
             local_only=True,
             enable_vision=False,
             generate_annotations=args.annotations,
-            max_workers=config.max_workers,
+            max_workers=config.default_workers,
             awb_acceptance_threshold=config.awb_clean_threshold,
         ),
         background=False,

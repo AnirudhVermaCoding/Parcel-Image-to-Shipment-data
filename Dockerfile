@@ -5,7 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     STREAMLIT_SERVER_HEADLESS=true \
     MAX_BATCH_IMAGES=500 \
-    MAX_WORKERS=2
+    MAX_WORKERS=2 \
+    MAX_WORKER_LIMIT=8
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -29,4 +30,3 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"
 
 CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501"]
-

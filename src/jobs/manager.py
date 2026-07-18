@@ -96,7 +96,7 @@ class JobManager:
     # Bump this whenever the public manager API or its in-memory state changes.
     # Streamlit uses it to avoid reusing an incompatible cached instance after
     # a hot reload while keeping persisted SQLite checkpoints intact.
-    CACHE_API_VERSION = 2
+    CACHE_API_VERSION = 3
 
     def __init__(self, config: AppConfig | None = None):
         self.config = config or AppConfig.from_env()
@@ -186,7 +186,7 @@ class JobManager:
             local_only=True,
             enable_vision=False,
             generate_annotations=self.config.generate_annotations,
-            max_workers=self.config.max_workers,
+            max_workers=self.config.default_workers,
             awb_acceptance_threshold=self.config.awb_clean_threshold,
         )
         self._save_options(job_id, options)
@@ -275,7 +275,7 @@ class JobManager:
             local_only=not self.config.enable_xai_fallback,
             enable_vision=self.config.enable_xai_fallback,
             generate_annotations=self.config.generate_annotations,
-            max_workers=self.config.max_workers,
+            max_workers=self.config.default_workers,
             awb_acceptance_threshold=self.config.awb_clean_threshold,
         )
         self._save_options(job_id, options)
