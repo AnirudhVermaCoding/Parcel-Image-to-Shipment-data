@@ -496,8 +496,11 @@ class JobManager:
                             options,
                         )
                         results.extend(saved)
-                        self._update_progress(job_id, results, total, stored_input.original_filename)
+                        # Publish the partial reports before advancing the visible
+                        # processed count. A reader that observes new progress can
+                        # therefore always download the matching checkpoint.
                         self._write_checkpoint_reports(job_id, results)
+                        self._update_progress(job_id, results, total, stored_input.original_filename)
 
             self.database.update_job(job_id, stage=JobStage.GENERATING_CSV)
             report_dir = self.config.runtime_dir / "jobs" / job_id / "reports"
