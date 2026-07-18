@@ -125,6 +125,7 @@ class AppConfig:
         return cls(
             runtime_dir=Path(os.getenv("RUNTIME_DIR", "runtime")),
             max_batch_images=_int_env("MAX_BATCH_IMAGES", batch_default),
+            processing_max_side=max(640, _int_env("PROCESSING_MAX_SIDE", 4096)),
             default_workers=min(requested_default_workers, worker_limit),
             max_workers=worker_limit,
             hosted_mode=hosted,

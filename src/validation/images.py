@@ -13,7 +13,6 @@ from src.schemas import QualityMetrics
 
 @dataclass(slots=True)
 class LoadedImage:
-    rgb: np.ndarray
     bgr: np.ndarray
     width: int
     height: int
@@ -31,9 +30,13 @@ def load_image(data: bytes, config: AppConfig) -> LoadedImage:
             )
         rgb = np.asarray(corrected)
     bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    # Downstream processing only needs BGR. Releasing the RGB array here avoids
+    # keeping a second full-resolution copy alive through OCR/detection, which
+    # halves the peak per-image footprint under concurrent workers.
+    del rgb
     height, width = bgr.shape[:2]
     orientation = "LANDSCAPE" if width > height else ("PORTRAIT" if height > width else "SQUARE")
-    return LoadedImage(rgb=rgb, bgr=bgr, width=width, height=height, orientation=orientation)
+    return LoadedImage(bgr=bgr, width=width, height=height, orientation=orientation)
 
 
 def calculate_quality_metrics(bgr: np.ndarray) -> QualityMetrics:

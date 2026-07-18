@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
 import shutil
@@ -501,6 +502,10 @@ class JobManager:
                         # therefore always download the matching checkpoint.
                         self._write_checkpoint_reports(job_id, results)
                         self._update_progress(job_id, results, total, stored_input.original_filename)
+                    # Promptly reclaim the large NumPy/OpenCV buffers allocated
+                    # while decoding this chunk, keeping peak memory bounded on
+                    # small hosted containers instead of waiting for GC drift.
+                    gc.collect()
 
             self.database.update_job(job_id, stage=JobStage.GENERATING_CSV)
             report_dir = self.config.runtime_dir / "jobs" / job_id / "reports"
