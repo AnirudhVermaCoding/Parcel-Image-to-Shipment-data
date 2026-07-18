@@ -244,7 +244,7 @@ VISION_PROMPT_VERSION=parcel-observation-v2
 DETECTOR_MODEL_PATH=models/parcel_detector.onnx
 DETECTOR_CONFIDENCE_THRESHOLD=0.35
 DETECTOR_IOU_THRESHOLD=0.45
-OCR_ENGINES=tesseract,rapidocr
+OCR_ENGINES=tesseract
 OCR_MAX_PASSES_PER_LABEL=6
 OCR_MAX_LABEL_CANDIDATES=1
 CALIBRATION_PATH=config/calibration.json
@@ -252,6 +252,13 @@ COURIER_RULES_PATH=config/courier_rules.json
 ```
 
 Never commit `.env` or `.streamlit/secrets.toml`.
+
+Streamlit Community Cloud uses Tesseract plus `opencv-python-headless` only.
+RapidOCR remains available for local experiments, but its package brings the
+desktop `opencv-python` distribution and is intentionally excluded from the
+production requirements. To enable it locally, run
+`pip install -r requirements-optional-ocr.txt` and set
+`OCR_ENGINES=tesseract,rapidocr`.
 
 ## Optional Vision Fallback
 

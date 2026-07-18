@@ -1,0 +1,4 @@
+# Optional local-only second OCR engine.
+# This dependency installs desktop opencv-python, so it is deliberately kept
+# out of the Streamlit Community Cloud production requirements.
+rapidocr-onnxruntime==1.4.4

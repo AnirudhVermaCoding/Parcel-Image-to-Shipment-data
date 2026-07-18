@@ -83,7 +83,7 @@ class AppConfig:
     vision_cache_enabled: bool = True
     vision_prompt_version: str = "parcel-observation-v2"
 
-    ocr_engines: tuple[str, ...] = ("tesseract", "rapidocr")
+    ocr_engines: tuple[str, ...] = ("tesseract",)
     ocr_max_passes_per_label: int = 6
     ocr_max_label_candidates: int = 1
     calibration_version: str = "conservative-v1"
@@ -113,7 +113,7 @@ class AppConfig:
         )
         engines = tuple(
             value.strip().lower()
-            for value in os.getenv("OCR_ENGINES", "tesseract,rapidocr").split(",")
+            for value in os.getenv("OCR_ENGINES", "tesseract").split(",")
             if value.strip()
         )
         calibration_path = os.getenv("CALIBRATION_PATH", "config/calibration.json")

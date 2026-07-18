@@ -26,6 +26,8 @@ jobs:
         run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Check dependency consistency
         run: pip check
+      - name: Reject desktop OpenCV in production
+        run: python -c "import importlib.metadata as m; names={d.metadata['Name'].lower() for d in m.distributions()}; assert 'opencv-python' not in names, 'Use opencv-python-headless only'"
       - name: Run tests
         run: python -m pytest tests/unit -q
 
@@ -47,5 +49,7 @@ jobs:
         run: pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
       - name: Check dependency consistency
         run: pip check
+      - name: Reject desktop OpenCV in production
+        run: python -c "import importlib.metadata as m; names={d.metadata['Name'].lower() for d in m.distributions()}; assert 'opencv-python' not in names, 'Use opencv-python-headless only'"
       - name: Verify imports and real Streamlit startup
         run: python -m pytest tests/unit/test_streamlit_smoke.py -q
