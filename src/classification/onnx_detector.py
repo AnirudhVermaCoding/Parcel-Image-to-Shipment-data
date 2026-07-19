@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import threading
 from dataclasses import dataclass, field
@@ -20,6 +21,43 @@ CLASS_NAMES = (
     "shipping_label_blocked",
     "hand_or_obstruction",
 )
+
+
+# The bundled baseline model uses broader logistics labels. Keep the mapping
+# deliberately narrow: unsupported classes are ignored instead of being
+# presented as parcel or label evidence.
+CLASS_ALIASES = {
+    "barcode": "barcode_region",
+    "qr code": "barcode_region",
+    "cardboard box": "parcel_full",
+    "package": "parcel_full",
+    "parcel": "parcel_full",
+    "gloves": "hand_or_obstruction",
+    "hand": "hand_or_obstruction",
+}
+
+
+def _model_class_names(raw_names: str | None) -> tuple[str, ...]:
+    if not raw_names:
+        return CLASS_NAMES
+    try:
+        parsed = ast.literal_eval(raw_names)
+    except (SyntaxError, ValueError):
+        return CLASS_NAMES
+    if isinstance(parsed, dict):
+        try:
+            return tuple(str(parsed[index]) for index in sorted(parsed, key=int))
+        except (KeyError, TypeError, ValueError):
+            return CLASS_NAMES
+    if isinstance(parsed, (list, tuple)) and parsed:
+        return tuple(str(name) for name in parsed)
+    return CLASS_NAMES
+
+
+def _internal_class_name(raw_name: str) -> str | None:
+    normalised = raw_name.strip().lower().replace("_", " ")
+    custom = {name.replace("_", " "): name for name in CLASS_NAMES}
+    return custom.get(normalised) or CLASS_ALIASES.get(normalised)
 
 
 @dataclass(slots=True)
@@ -64,8 +102,15 @@ class OnnxParcelDetector:
             providers=["CPUExecutionProvider"],
         )
         self.input_name = self.session.get_inputs()[0].name
+        metadata = self.session.get_modelmeta().custom_metadata_map
+        self.class_names = _model_class_names(metadata.get("names"))
+        self.profile = (
+            "custom-five-class"
+            if set(self.class_names) == set(CLASS_NAMES)
+            else "logistics-baseline"
+        )
         digest = hashlib.sha256(self.model_path.read_bytes()).hexdigest()[:12]
-        self.version = f"{self.model_path.stem}:{digest}"
+        self.version = f"{self.model_path.stem}:{digest}:{self.profile}"
         self.lock = threading.Lock()
 
     def _preprocess(self, bgr: np.ndarray) -> tuple[np.ndarray, float, int, int]:
@@ -82,13 +127,13 @@ class OnnxParcelDetector:
         return tensor, scale, left, top
 
     @staticmethod
-    def _rows(output: np.ndarray) -> np.ndarray:
+    def _rows(output: np.ndarray, class_count: int = len(CLASS_NAMES)) -> np.ndarray:
         values = np.asarray(output)
         if values.ndim == 3:
             values = values[0]
         if values.ndim != 2:
             raise ValueError(f"Unsupported detector output shape: {values.shape}")
-        expected = 4 + len(CLASS_NAMES)
+        expected = 4 + class_count
         if values.shape[0] == expected and values.shape[1] != expected:
             values = values.T
         if values.shape[1] < expected:
@@ -99,16 +144,19 @@ class OnnxParcelDetector:
         tensor, scale, left, top = self._preprocess(bgr)
         with self.lock:
             output = self.session.run(None, {self.input_name: tensor})[0]
-        rows = self._rows(output)
+        rows = self._rows(output, len(self.class_names))
         boxes: list[list[int]] = []
         scores: list[float] = []
-        class_ids: list[int] = []
+        internal_names: list[str] = []
         original_height, original_width = bgr.shape[:2]
         for row in rows:
-            class_scores = row[4 : 4 + len(CLASS_NAMES)]
+            class_scores = row[4 : 4 + len(self.class_names)]
             class_id = int(np.argmax(class_scores))
             score = float(class_scores[class_id])
             if score < config.detector_confidence_threshold:
+                continue
+            internal_name = _internal_class_name(self.class_names[class_id])
+            if internal_name is None:
                 continue
             center_x, center_y, width, height = map(float, row[:4])
             x = int(round((center_x - width / 2 - left) / scale))
@@ -120,18 +168,30 @@ class OnnxParcelDetector:
             height = min(height, original_height - y)
             if width <= 1 or height <= 1:
                 continue
+            edge_margin = max(2, int(min(original_width, original_height) * 0.01))
+            if internal_name == "parcel_full" and (
+                x <= edge_margin
+                or y <= edge_margin
+                or x + width >= original_width - edge_margin
+                or y + height >= original_height - edge_margin
+            ):
+                internal_name = "parcel_partial"
             boxes.append([x, y, width, height])
             scores.append(score)
-            class_ids.append(class_id)
-        indices = cv2.dnn.NMSBoxes(
-            boxes,
-            scores,
-            config.detector_confidence_threshold,
-            config.detector_iou_threshold,
+            internal_names.append(internal_name)
+        indices = (
+            cv2.dnn.NMSBoxes(
+                boxes,
+                scores,
+                config.detector_confidence_threshold,
+                config.detector_iou_threshold,
+            )
+            if boxes
+            else []
         )
         detections = [
             Detection(
-                class_name=CLASS_NAMES[class_ids[int(index)]],
+                class_name=internal_names[int(index)],
                 confidence=round(scores[int(index)], 4),
                 bbox=BoundingBox(
                     x=boxes[int(index)][0],

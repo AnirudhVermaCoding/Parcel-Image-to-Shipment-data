@@ -13,7 +13,13 @@ from openai import APIConnectionError, APIStatusError, RateLimitError
 
 from scripts.evaluate_accuracy import evaluate
 from scripts.validate_yolo_annotations import validate
-from src.classification.onnx_detector import CLASS_NAMES, OnnxParcelDetector, detect_with_onnx
+from src.classification.onnx_detector import (
+    CLASS_NAMES,
+    OnnxParcelDetector,
+    _internal_class_name,
+    _model_class_names,
+    detect_with_onnx,
+)
 from src.classification.status_engine import assign_status
 from src.extraction.courier_rules import matching_rules, validate_rule_file
 from src.extraction.label_detector import LabelCandidate
@@ -33,6 +39,19 @@ def test_missing_detector_falls_back_explicitly(test_config) -> None:
 def test_yolo_output_orientation_is_normalised() -> None:
     rows = np.zeros((4 + len(CLASS_NAMES), 10), dtype=np.float32)
     assert OnnxParcelDetector._rows(rows).shape == (10, 4 + len(CLASS_NAMES))
+
+
+def test_detector_reads_embedded_class_metadata() -> None:
+    names = _model_class_names("{0: 'barcode', 1: 'cardboard box', 2: 'person'}")
+    assert names == ("barcode", "cardboard box", "person")
+    assert _internal_class_name(names[0]) == "barcode_region"
+    assert _internal_class_name(names[1]) == "parcel_full"
+    assert _internal_class_name(names[2]) is None
+
+
+def test_generic_yolo_output_orientation_uses_model_class_count() -> None:
+    rows = np.zeros((4 + 20, 8400), dtype=np.float32)
+    assert OnnxParcelDetector._rows(rows, 20).shape == (8400, 24)
 
 
 def test_courier_rules_validate_numeric_awb(test_config) -> None:

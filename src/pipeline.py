@@ -166,19 +166,27 @@ def _vision_candidates(observation) -> list[FieldCandidate]:
 def _detector_label_candidates(bgr, evidence) -> list[LabelCandidate]:
     candidates: list[LabelCandidate] = []
     for detection in evidence.detections:
-        if not detection.class_name.startswith("shipping_label_"):
+        if not (
+            detection.class_name.startswith("shipping_label_")
+            or detection.class_name == "barcode_region"
+        ):
             continue
         bbox = detection.bbox
-        padding = max(4, int(min(bbox.width, bbox.height) * 0.06))
-        x1, y1 = max(0, bbox.x - padding), max(0, bbox.y - padding)
-        x2 = min(bgr.shape[1], bbox.x + bbox.width + padding)
-        y2 = min(bgr.shape[0], bbox.y + bbox.height + padding)
+        if detection.class_name == "barcode_region":
+            padding_x = max(12, int(bbox.width * 0.55))
+            padding_y = max(12, int(bbox.height * 2.0))
+        else:
+            padding_x = padding_y = max(4, int(min(bbox.width, bbox.height) * 0.06))
+        x1, y1 = max(0, bbox.x - padding_x), max(0, bbox.y - padding_y)
+        x2 = min(bgr.shape[1], bbox.x + bbox.width + padding_x)
+        y2 = min(bgr.shape[0], bbox.y + bbox.height + padding_y)
         crop = bgr[y1:y2, x1:x2]
         if crop.size == 0:
             continue
+        expanded_bbox = BoundingBox(x=x1, y=y1, width=x2 - x1, height=y2 - y1)
         candidates.append(
             LabelCandidate(
-                bbox=bbox,
+                bbox=expanded_bbox,
                 score=detection.confidence,
                 crop=crop,
                 rectangularity=1.0,
