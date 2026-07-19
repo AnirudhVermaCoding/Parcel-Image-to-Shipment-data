@@ -4,6 +4,18 @@ A local-first Streamlit application that processes parcel photographs in bulk an
 
 > Design principle: a wrong AWB is worse than an honest failure flag.
 
+## How This Meets the Brief
+
+| Evaluation requirement | Implementation |
+|---|---|
+| Bulk warehouse input | Upload multiple JPG/JPEG/PNG images or one ZIP archive. The default configurable limit is 500 images. |
+| One result per image | Every accepted upload receives its own typed record and exception boundary, so a corrupt or difficult image cannot terminate the batch. |
+| Shipment fields | Extract AWB/tracking number, weight, and length/width/height when present. Every technical output records the evidence source and confidence. |
+| Honest failure handling | Return explicit review or rejection states for uncertain parcel detection, multiple parcels, partial parcels, missing/blocked/unreadable labels, AWB conflicts, low confidence, unsupported files, and processing failures. |
+| Downloadable output | Download a warehouse-friendly CSV at any point after results exist; full audit CSV and JSON are also available. |
+
+The application is an end-to-end conservative prototype, not a claim of production accuracy. The upload, processing, review, recovery, and CSV paths work. The current detector is a generic logistics baseline, and the published labelled evaluation shows that parcel-condition classification still needs a trained five-class model. See [Evaluation evidence](#evaluation-evidence).
+
 ## What Goes In and What Comes Out
 
 Input:
@@ -18,11 +30,13 @@ Output:
 - Audit JSON with candidates, raw OCR, confidence, bounding boxes, and warnings.
 - Optional annotated previews.
 
+The warehouse CSV contains filename, tracking number, weight, dimensions, location, a readable result, a review marker, and plain-English notes. The audit output additionally exposes parcel/label state, extraction source, confidence, candidates, raw OCR evidence, detector metadata, warnings, and safe error information.
+
 ## Important Supplied-Data Observation
 
 The supplied images contain yellow machine-generated overlays with fields such as `Location`, `AWB No`, `Length`, `Width`, `Height`, `R.Vol.`, `Weight`, and `Time`.
 
-That information is processed as `OVERLAY_OCR`. It is not presented as courier-label extraction. Courier labels and barcodes are independently processed as `LABEL_OCR` and `BARCODE`. An image may therefore return reliable overlay fields while honestly reporting `LABEL_NOT_VISIBLE`. An AWB supported only by the machine overlay is retained as evidence but is always routed to review with `AWB_NOT_LABEL_VERIFIED`; it becomes clean only after matching label OCR or barcode evidence is found.
+That information is processed as `OVERLAY_OCR`. It is not presented as courier-label extraction. Courier labels and barcodes are independently processed as `LABEL_OCR` and `BARCODE`. An image may therefore return reliable overlay fields while honestly reporting `LABEL_NOT_VISIBLE`. An AWB supported only by the machine overlay is retained as evidence but is always routed to review with `AWB_NOT_LABEL_VERIFIED`; it becomes clean only after matching courier-label OCR or barcode evidence is found. The full audit output makes this source distinction explicit.
 
 ## Architecture
 
@@ -142,7 +156,7 @@ Agreement rules:
 - SQLite metadata in WAL mode.
 - Synchronous verification and an optional background coordinator using the same pipeline.
 - Per-image isolation and duplicate-result reuse.
-- Manual refresh updates active-job progress without leaving stale polling fragments.
+- Active background jobs refresh once per second inside a Streamlit fragment; polling is disabled as soon as the job becomes idle or terminal.
 - Up to 500 images per job, submitted to workers in bounded chunks.
 - Two workers by default, with a shared 1-8 selector for both ZIP and multi-image uploads on Streamlit Community Cloud.
 - Atomic partial CSV/JSON checkpoints after every completed image.
@@ -150,7 +164,7 @@ Agreement rules:
 
 Jobs survive Streamlit reruns while the application process remains alive. A process restart marks an in-flight job interrupted without deleting its completed records. If the instance-local uploads still exist, **Resume unfinished images** keeps the existing results and processes only missing hashes.
 
-## 9 · Background jobs (optional)
+## Background Jobs (Optional)
 
 Synchronous verification is the authoritative path. Background mode runs the same job on a worker with SQLite state and continuously persisted reports, so it can be reopened by job ID while the app instance is running.
 
@@ -159,6 +173,8 @@ Unlike the previous all-or-nothing result screen, a running, cancelled, failed, 
 Background threads themselves are not durable. Streamlit Community Cloud may restart the process and may eventually discard local files; local execution is the reliable mode for long batches. Production durability still requires external object storage, a database, and a worker queue.
 
 ## Local Setup
+
+The evaluator can run the complete local-only workflow without API credentials. Python 3.11 and Tesseract 5 are the only system prerequisites.
 
 ### 1. Python environment
 
@@ -195,6 +211,14 @@ streamlit run app.py
 Open [http://localhost:8501](http://localhost:8501).
 
 No API key is required.
+
+Evaluator smoke check:
+
+1. Select **Simple** view.
+2. Upload several JPG/PNG files, or one ZIP containing supported images.
+3. Select **Process images**.
+4. Inspect ready, review, and rejected results.
+5. Download `parcel_results.csv` and confirm that every processed image has one row.
 
 ## CLI
 
@@ -313,11 +337,13 @@ python -m scripts.create_test_fixtures --source path\to\local-parcel.jpg
 
 The public unit suite covers validation, ZIP safety, parsing, normalization, AWB validation, reconciliation, confidence, CSV preservation, provider-disabled behavior, corrupt images, provider recovery, and job recovery. Private golden and integration suites remain local because they depend on shipment images and expected AWBs.
 
-## Ground Truth, Evaluation, and Calibration
+The GitHub `Tests` workflow builds a fresh Python 3.11 environment, installs Tesseract and production dependencies, runs the public unit suite, and performs a real Streamlit startup smoke test on every push to `main`.
+
+## Evaluation Evidence
 
 The locally generated `evaluation/ground_truth.csv` contains a human-labelling template with SHA-256 values, near-duplicate groups, and deterministic 70/15/15 splits. It is ignored by Git because it describes private shipment images. System predictions must never be copied into ground truth.
 
-The locally generated `evaluation/baseline_summary.json` records aggregate baseline metrics. It is also ignored by Git; accuracy fields remain explicitly pending human ground truth.
+The locally generated `evaluation/baseline_summary.json` covers the larger unlabelled inventory and remains ignored by Git. Its accuracy fields are intentionally unset because unlabelled images cannot establish accuracy. The separate, manually labelled evaluation is reported in [EVALUATION_REPORT.md](EVALUATION_REPORT.md).
 
 Build a template from a local job:
 
@@ -335,6 +361,18 @@ python -m scripts.evaluate_accuracy `
 ```
 
 The command writes `metrics.json`, `failures.csv`, and `threshold_sweep.csv`. Metrics include AWB exact-match precision and recall, false clean AWBs, review recall, parcel-condition accuracy, per-field coverage, review rate, and failure rate. Aggregate results from the private labelled run are published in [EVALUATION_REPORT.md](EVALUATION_REPORT.md); private filenames and shipment values remain excluded. The current result is not a production detector claim: parcel-condition accuracy on the small adverse fixture cohort was 9.1%.
+
+Current measured snapshot:
+
+| Measure | Result | Meaning |
+|---|---:|---|
+| Target-photo AWB exact-match precision | 100% (17/17) | Every extracted AWB matched the human label in this small target cohort. |
+| False clean AWBs | 0 | No known incorrect AWB bypassed review. |
+| Adverse-fixture review recall | 100% (10/10) | Every fixture labelled as needing review was routed to review. |
+| Parcel-condition accuracy | 9.1% (1/11) | The current generic detector is not adequate for a production parcel-condition claim. |
+| Target-photo field coverage | 100% (85/85) | All labelled fields were populated; coverage alone does not prove numeric weight or dimension correctness. |
+
+These figures establish a transparent baseline, not expected performance on unseen evaluator images. Seventeen target photographs are a small sample, and the adverse fixtures are transformations of one source photograph. Weight and dimension accuracy, blocked-label accuracy, and broad courier/background generalisation remain unproven.
 
 Freeze the lowest-review threshold meeting 99% precision:
 
@@ -390,9 +428,7 @@ Supplied parcel images, golden manifests, expected AWBs, generated annotations, 
 7. The committed ONNX artifact is a documented logistics baseline. Replace it only after a custom five-class checkpoint passes frozen validation; without a loadable artifact, diagnostics report the OpenCV fallback.
 8. Test ZIP upload, progress recovery, partial CSV/JSON downloads, and consent behavior in a private browser window.
 9. Watch the GitHub `Tests` workflow and the Streamlit deployment logs for dependency or resource failures.
-10. Add the final URL below.
-
-Deployed URL: `TBD`
+10. Record a public URL only if a hosted demonstration is intentionally provided. Local Streamlit and Docker are the supported evaluation paths in this repository.
 
 Use only synthetic or explicitly approved images in a public demonstration.
 
