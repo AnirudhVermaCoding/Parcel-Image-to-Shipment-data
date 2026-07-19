@@ -61,6 +61,7 @@ FLAG_PLAIN: dict[str, str] = {
     "MULTIPLE_BARCODES": "More than one barcode was found",
     "AWB_NOT_FOUND": "No tracking number was found",
     "AWB_CONFLICT": "Two different tracking numbers were read",
+    "AWB_NOT_LABEL_VERIFIED": "The tracking number was read only from the machine overlay",
     "DIMENSIONS_NOT_FOUND": "The size was not found",
     "WEIGHT_NOT_FOUND": "The weight was not found",
     "OVERLAY_NOT_FOUND": "The scale/machine reading was not found",
@@ -72,6 +73,26 @@ FLAG_PLAIN: dict[str, str] = {
     "DETECTOR_UNAVAILABLE": "The parcel detector model was unavailable",
     "UNSUPPORTED_IMAGE": "The file was not a supported image",
     "DUPLICATE_IMAGE": "This photo is a duplicate of another",
+}
+
+
+REVIEW_REASON_PLAIN: dict[str, str] = {
+    "processing_error": "The image could not be processed",
+    "multiple_parcels": "More than one parcel is in the photo",
+    "parcel_partially_visible": "The parcel is only partly visible",
+    "parcel_detection_uncertain": "The system was unsure about the parcel",
+    "label_not_visible": "No shipping label was visible",
+    "label_blocked": "The label was covered or blocked",
+    "label_unreadable": "The label could not be read",
+    "label_partially_visible": "The label was only partly visible",
+    "multiple_label_candidates": "Several possible labels were seen",
+    "awb_not_found": "No tracking number was found",
+    "awb_conflict": "Two different tracking numbers were read",
+    "awb_not_label_verified": "The tracking number was read only from the machine overlay",
+    "awb_below_clean_threshold": "The tracking number confidence was too low",
+    "vision_unavailable_local_evidence_insufficient": (
+        "The optional AI helper was unavailable and the local evidence was insufficient"
+    ),
 }
 
 
@@ -95,7 +116,10 @@ def plain_reasons(result) -> list[str]:
     Prefers the explicit review_reasons; otherwise translates the status flags.
     """
     if result.review_reasons:
-        return list(result.review_reasons)
+        return [
+            REVIEW_REASON_PLAIN.get(str(reason), _humanize(str(reason)))
+            for reason in result.review_reasons
+        ]
     if result.status_flags:
         return [_flag_plain(flag) for flag in result.status_flags]
     return []

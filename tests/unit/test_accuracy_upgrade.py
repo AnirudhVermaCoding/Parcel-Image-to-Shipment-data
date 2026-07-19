@@ -26,7 +26,19 @@ from src.extraction.label_detector import LabelCandidate
 from src.extraction.label_ocr import _schedule, _variants, extract_label_text
 from src.extraction.vision_fallback import XaiVisionProvider, _category_for_exception
 from src.jobs.manager import LimitedVisionProvider
-from src.schemas import BoundingBox, ImageResult, LabelStatus, ParcelVisibility, VisionAnalysis, VisionDiagnostic, VisionObservation
+from src.schemas import (
+    BoundingBox,
+    ExtractionSource,
+    FieldCandidate,
+    ImageResult,
+    LabelStatus,
+    ParcelVisibility,
+    PrimaryStatus,
+    StatusFlag,
+    VisionAnalysis,
+    VisionDiagnostic,
+    VisionObservation,
+)
 
 
 def test_missing_detector_falls_back_explicitly(test_config) -> None:
@@ -72,6 +84,65 @@ def test_review_reasons_are_explicit(test_config) -> None:
     assign_status(result, test_config)
     assert "parcel_partially_visible" in result.review_reasons
     assert "awb_not_found" in result.review_reasons
+
+
+def test_overlay_only_awb_requires_review(test_config) -> None:
+    result = ImageResult(
+        image_id="overlay-only",
+        original_filename="overlay.jpg",
+        parcel_count=1,
+        parcel_visibility=ParcelVisibility.FULL,
+        label_status=LabelStatus.LABEL_NOT_VISIBLE,
+        awb_number="11112222333344",
+        awb_source=ExtractionSource.OVERLAY_OCR,
+        awb_confidence=0.98,
+        candidates=[
+            FieldCandidate(
+                field_name="awb_number",
+                value="11112222333344",
+                normalised_value="11112222333344",
+                source=ExtractionSource.OVERLAY_OCR,
+                confidence=0.98,
+            )
+        ],
+    )
+    assign_status(result, test_config)
+    assert result.primary_status == PrimaryStatus.REVIEW_REQUIRED
+    assert result.requires_review
+    assert StatusFlag.AWB_NOT_LABEL_VERIFIED in result.status_flags
+    assert "awb_not_label_verified" in result.review_reasons
+
+
+def test_overlay_and_label_agreement_is_clean(test_config) -> None:
+    candidates = [
+        FieldCandidate(
+            field_name="awb_number",
+            value="11112222333344",
+            normalised_value="11112222333344",
+            source=source,
+            confidence=0.98,
+        )
+        for source in (ExtractionSource.OVERLAY_OCR, ExtractionSource.LABEL_OCR)
+    ]
+    result = ImageResult(
+        image_id="verified",
+        original_filename="verified.jpg",
+        parcel_count=1,
+        parcel_visibility=ParcelVisibility.FULL,
+        label_status=LabelStatus.LABEL_VISIBLE_READABLE,
+        awb_number="11112222333344",
+        awb_source=ExtractionSource.OVERLAY_OCR,
+        awb_confidence=0.98,
+        weight_grams=1000,
+        length_cm=10,
+        width_cm=10,
+        height_cm=10,
+        candidates=candidates,
+    )
+    assign_status(result, test_config)
+    assert result.primary_status == PrimaryStatus.SUCCESS_OVERLAY_AND_LABEL
+    assert not result.requires_review
+    assert StatusFlag.AWB_NOT_LABEL_VERIFIED not in result.status_flags
 
 
 def test_multi_engine_label_ocr_records_provenance(monkeypatch, test_config) -> None:
@@ -208,18 +279,59 @@ def test_per_job_vision_cap(monkeypatch, test_config) -> None:
 def test_accuracy_metrics_and_threshold_sweep() -> None:
     truth = pd.DataFrame(
         [
-            {"filename": "a.jpg", "expected_awb": "11111111", "annotated": "true", "split": "val"},
-            {"filename": "b.jpg", "expected_awb": "22222222", "annotated": "true", "split": "val"},
+            {
+                "filename": "a.jpg",
+                "expected_awb": "11111111",
+                "expected_weight_grams": "500",
+                "expected_parcel_count": "1",
+                "expected_parcel_visibility": "FULL",
+                "expected_review": "false",
+                "annotated": "true",
+                "split": "val",
+            },
+            {
+                "filename": "b.jpg",
+                "expected_awb": "22222222",
+                "expected_weight_grams": "600",
+                "expected_parcel_count": "2",
+                "expected_parcel_visibility": "FULL",
+                "expected_review": "true",
+                "annotated": "true",
+                "split": "val",
+            },
         ]
     )
     predictions = pd.DataFrame(
         [
-            {"filename": "a.jpg", "awb_number": "11111111", "awb_confidence": 0.95, "requires_review": False, "processing_status": "COMPLETED"},
-            {"filename": "b.jpg", "awb_number": "", "awb_confidence": 0.0, "requires_review": True, "processing_status": "COMPLETED"},
+            {
+                "filename": "a.jpg",
+                "awb_number": "11111111",
+                "awb_confidence": 0.95,
+                "weight_grams": 500,
+                "parcel_count": 1,
+                "parcel_visibility": "FULL",
+                "requires_review": False,
+                "processing_status": "COMPLETED",
+            },
+            {
+                "filename": "b.jpg",
+                "awb_number": "",
+                "awb_confidence": 0.0,
+                "weight_grams": "",
+                "parcel_count": 2,
+                "parcel_visibility": "FULL",
+                "requires_review": True,
+                "processing_status": "COMPLETED",
+            },
         ]
     )
     metrics, failures, sweep = evaluate(truth, predictions, "val")
     assert metrics["clean_awb_precision"] == 1.0
+    assert metrics["awb_exact_match_precision"] == 1.0
+    assert metrics["false_clean_awb_count"] == 0
+    assert metrics["review_recall"] == 1.0
+    assert metrics["parcel_condition_accuracy"] == 1.0
+    assert metrics["field_coverage"]["weight"]["coverage"] == 0.5
     assert metrics["review_rate"] == 0.5
     assert failures.empty
     assert not sweep.empty

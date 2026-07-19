@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from src.classification.status_engine import REVIEW_REASON_BY_FLAG
 from src.reporting import presentation
 from src.schemas import ImageResult, PrimaryStatus, StatusFlag
 
@@ -56,6 +57,37 @@ def test_review_required_is_warn_with_reasons():
     assert presentation.outcome(result)["tone"] == "warn"
     reasons = presentation.plain_reasons(result)
     assert reasons == ["Please double-check the weight"]
+
+
+@pytest.mark.parametrize(
+    ("technical_reason", "expected"),
+    [
+        ("awb_not_found", "No tracking number was found"),
+        ("parcel_partially_visible", "The parcel is only partly visible"),
+        (
+            "awb_not_label_verified",
+            "The tracking number was read only from the machine overlay",
+        ),
+        ("future_reason_key", "Future reason key"),
+    ],
+)
+def test_technical_review_reasons_are_plain_english(technical_reason, expected):
+    result = _make(
+        primary_status=PrimaryStatus.REVIEW_REQUIRED,
+        requires_review=True,
+        review_reasons=[technical_reason],
+    )
+    assert presentation.plain_reasons(result) == [expected]
+
+
+def test_every_current_flag_and_review_reason_has_plain_language() -> None:
+    assert {flag.value for flag in StatusFlag} <= set(presentation.FLAG_PLAIN)
+    generated_reasons = set(REVIEW_REASON_BY_FLAG.values()) | {
+        "processing_error",
+        "awb_not_found",
+        "vision_unavailable_local_evidence_insufficient",
+    }
+    assert generated_reasons <= set(presentation.REVIEW_REASON_PLAIN)
 
 
 def test_requires_review_overrides_good_outcome():

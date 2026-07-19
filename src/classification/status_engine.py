@@ -20,6 +20,7 @@ REVIEW_FLAGS = {
     StatusFlag.LABEL_PARTIALLY_VISIBLE,
     StatusFlag.MULTIPLE_LABEL_CANDIDATES,
     StatusFlag.AWB_CONFLICT,
+    StatusFlag.AWB_NOT_LABEL_VERIFIED,
     StatusFlag.LOW_OCR_CONFIDENCE,
 }
 
@@ -33,6 +34,7 @@ REVIEW_REASON_BY_FLAG = {
     StatusFlag.LABEL_PARTIALLY_VISIBLE: "label_partially_visible",
     StatusFlag.MULTIPLE_LABEL_CANDIDATES: "multiple_label_candidates",
     StatusFlag.AWB_CONFLICT: "awb_conflict",
+    StatusFlag.AWB_NOT_LABEL_VERIFIED: "awb_not_label_verified",
     StatusFlag.LOW_OCR_CONFIDENCE: "awb_below_clean_threshold",
 }
 
@@ -81,22 +83,30 @@ def assign_status(result: ImageResult, config: AppConfig) -> ImageResult:
     if any(value is None for value in (result.length_cm, result.width_cm, result.height_cm)):
         flags.add(StatusFlag.DIMENSIONS_NOT_FOUND)
 
+    canonical_awb = str(result.awb_number or "").strip().upper()
+    supporting_sources = {
+        candidate.source
+        for candidate in result.candidates
+        if candidate.field_name == "awb_number"
+        and str(candidate.normalised_value or "").strip().upper() == canonical_awb
+    }
+    independently_label_verified = bool(
+        supporting_sources & {ExtractionSource.BARCODE, ExtractionSource.LABEL_OCR}
+    )
+    if (
+        result.awb_number
+        and result.awb_source == ExtractionSource.OVERLAY_OCR
+        and not independently_label_verified
+    ):
+        flags.add(StatusFlag.AWB_NOT_LABEL_VERIFIED)
+
     risky = bool(flags & REVIEW_FLAGS)
     if StatusFlag.AWB_CONFLICT in flags or risky:
         result.primary_status = PrimaryStatus.REVIEW_REQUIRED
         result.requires_review = True
-    elif (
-        result.awb_number
-        and result.awb_source == ExtractionSource.OVERLAY_OCR
-        and result.label_status == LabelStatus.LABEL_NOT_VISIBLE
-        and result.awb_confidence >= config.awb_clean_threshold
+    elif result.awb_number and ExtractionSource.OVERLAY_OCR in supporting_sources and (
+        supporting_sources & {ExtractionSource.BARCODE, ExtractionSource.LABEL_OCR}
     ):
-        result.primary_status = PrimaryStatus.SUCCESS_OVERLAY_ONLY
-        result.requires_review = False
-    elif result.awb_number and {
-        ExtractionSource.OVERLAY_OCR,
-        ExtractionSource.BARCODE,
-    }.issubset({candidate.source for candidate in result.candidates if candidate.field_name == "awb_number"}):
         result.primary_status = PrimaryStatus.SUCCESS_OVERLAY_AND_LABEL
         result.requires_review = False
     elif result.awb_number and result.awb_source in {
@@ -104,9 +114,6 @@ def assign_status(result: ImageResult, config: AppConfig) -> ImageResult:
         ExtractionSource.LABEL_OCR,
     }:
         result.primary_status = PrimaryStatus.SUCCESS_LABEL_VERIFIED
-        result.requires_review = False
-    elif result.awb_number and result.awb_source == ExtractionSource.OVERLAY_OCR:
-        result.primary_status = PrimaryStatus.SUCCESS_OVERLAY_ONLY
         result.requires_review = False
     else:
         result.primary_status = PrimaryStatus.SUCCESS_PARTIAL_FIELDS

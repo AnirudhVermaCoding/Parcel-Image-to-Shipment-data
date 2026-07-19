@@ -22,7 +22,7 @@ Output:
 
 The supplied images contain yellow machine-generated overlays with fields such as `Location`, `AWB No`, `Length`, `Width`, `Height`, `R.Vol.`, `Weight`, and `Time`.
 
-That information is processed as `OVERLAY_OCR`. It is not presented as courier-label extraction. Courier labels and barcodes are independently processed as `LABEL_OCR` and `BARCODE`. An image may therefore return reliable overlay fields while honestly reporting `LABEL_NOT_VISIBLE`.
+That information is processed as `OVERLAY_OCR`. It is not presented as courier-label extraction. Courier labels and barcodes are independently processed as `LABEL_OCR` and `BARCODE`. An image may therefore return reliable overlay fields while honestly reporting `LABEL_NOT_VISIBLE`. An AWB supported only by the machine overlay is retained as evidence but is always routed to review with `AWB_NOT_LABEL_VERIFIED`; it becomes clean only after matching label OCR or barcode evidence is found.
 
 ## Architecture
 
@@ -69,9 +69,9 @@ Each image is processed inside its own exception boundary.
 
 ## Accuracy Upgrade Status
 
-The runtime now supports CPU ONNX detection, bounded multi-pass Tesseract, conditional RapidOCR, configurable courier rules, calibrated thresholds, and cached/rate-limited xAI structured output. The repository contains CVAT validation, evaluation, Google Colab training, YOLO11n, and ONNX export tooling. Private images, ground truth, and derived shipment reports are intentionally excluded from Git.
+The runtime supports CPU ONNX detection, bounded multi-pass Tesseract, conditional RapidOCR, configurable courier rules, calibrated thresholds, and cached/rate-limited xAI structured output. The repository contains CVAT validation, evaluation, Google Colab training, YOLO11n, and ONNX export tooling. Private images, ground truth, and derived shipment reports are intentionally excluded from Git.
 
-No detector checkpoint is claimed until human annotations are complete and the validation gates pass. Without `models/parcel_detector.onnx`, the application continues with the conservative OpenCV detector and records `DETECTOR_UNAVAILABLE` in the audit output.
+`models/parcel_detector.onnx` is installed as a documented logistics baseline. It maps only supported upstream classes such as cardboard boxes and barcode regions, and it does **not** claim the full five-class custom detector capability or blocked-label detection. See `models/parcel_detector.model-card.md` for its checksum, provenance, licence, metrics, and limitations. If the artifact is removed or cannot load, the application continues with conservative OpenCV heuristics and records `DETECTOR_UNAVAILABLE`.
 
 ## Technology Choices
 
@@ -113,6 +113,8 @@ Detailed flags include no/multiple/partial parcel, uncertain detection, label vi
 
 `NO_PARCEL` requires strong combined evidence. Failed segmentation alone produces `PARCEL_DETECTION_UNCERTAIN`.
 
+`SUCCESS_OVERLAY_ONLY` remains in the schema so older saved jobs can still be read. New overlay-only AWBs are `REVIEW_REQUIRED` and carry `AWB_NOT_LABEL_VERIFIED`.
+
 ## Confidence and Reconciliation
 
 Every extracted field includes its source and confidence.
@@ -128,9 +130,10 @@ Agreement rules:
 
 1. Barcode + overlay or barcode + label agreement is strongest.
 2. Overlay + label agreement is high confidence.
-3. A single strong barcode or explicitly anchored overlay may be accepted.
-4. Label OCR alone needs strong context and confidence.
-5. Unresolved disagreement becomes `AWB_CONFLICT` and `REVIEW_REQUIRED`.
+3. A single strong barcode may be accepted when its format and context are credible.
+4. An explicitly anchored overlay AWB remains review-only until label OCR or barcode evidence agrees.
+5. Label OCR alone needs strong context and confidence.
+6. Unresolved disagreement becomes `AWB_CONFLICT` and `REVIEW_REQUIRED`.
 
 ## Batch Processing
 
@@ -139,7 +142,7 @@ Agreement rules:
 - SQLite metadata in WAL mode.
 - Synchronous verification and an optional background coordinator using the same pipeline.
 - Per-image isolation and duplicate-result reuse.
-- Streamlit fragment polling keeps progress updates responsive.
+- Manual refresh updates active-job progress without leaving stale polling fragments.
 - Up to 500 images per job, submitted to workers in bounded chunks.
 - Two workers by default, with a shared 1-8 selector for both ZIP and multi-image uploads on Streamlit Community Cloud.
 - Atomic partial CSV/JSON checkpoints after every completed image.
@@ -331,7 +334,9 @@ python -m scripts.evaluate_accuracy `
   --split val
 ```
 
-The command writes `metrics.json`, `failures.csv`, and `threshold_sweep.csv`. Freeze the lowest-review threshold meeting 99% precision:
+The command writes `metrics.json`, `failures.csv`, and `threshold_sweep.csv`. Metrics include AWB exact-match precision and recall, false clean AWBs, review recall, parcel-condition accuracy, per-field coverage, review rate, and failure rate. Aggregate results from the private labelled run are published in [EVALUATION_REPORT.md](EVALUATION_REPORT.md); private filenames and shipment values remain excluded. The current result is not a production detector claim: parcel-condition accuracy on the small adverse fixture cohort was 9.1%.
+
+Freeze the lowest-review threshold meeting 99% precision:
 
 ```powershell
 python -m scripts.calibrate_threshold `
@@ -357,7 +362,7 @@ python -m scripts.validate_yolo_annotations `
 
 5. Open `training/parcel_detector_colab.ipynb` in a Colab GPU runtime, replace the repository URL placeholder, upload the CVAT export, and run all cells.
 6. The notebook uses pinned training dependencies, trains YOLO11n at 640×640, exports fixed-input opset-17 ONNX, and writes a model card.
-7. Install an accepted artifact at `models/parcel_detector.onnx`; Streamlit loads it once for CPU inference.
+7. Replace the documented logistics baseline at `models/parcel_detector.onnx` only after the five-class custom artifact passes frozen validation; Streamlit loads the configured artifact once for CPU inference.
 
 Training dependencies are isolated in `training/requirements.txt`. Raw training data, runs, and generated evaluation results are ignored by Git. Review the Ultralytics license before commercial deployment.
 
@@ -382,7 +387,7 @@ Supplied parcel images, golden manifests, expected AWBs, generated annotations, 
    ```
 
 6. If optional xAI vision is required, add `XAI_API_KEY` in the Secrets editor and set `ENABLE_XAI_FALLBACK = true`. Do not commit `.env` or `.streamlit/secrets.toml`.
-7. Commit an ONNX artifact only after its model card and frozen validation metrics pass. Without it, the diagnostics panel honestly reports the OpenCV fallback.
+7. The committed ONNX artifact is a documented logistics baseline. Replace it only after a custom five-class checkpoint passes frozen validation; without a loadable artifact, diagnostics report the OpenCV fallback.
 8. Test ZIP upload, progress recovery, partial CSV/JSON downloads, and consent behavior in a private browser window.
 9. Watch the GitHub `Tests` workflow and the Streamlit deployment logs for dependency or resource failures.
 10. Add the final URL below.
@@ -395,7 +400,7 @@ Community Cloud uses instance-local, ephemeral storage. Completed checkpoints an
 
 ## Known Limitations
 
-- Until a validated ONNX checkpoint is installed, parcel and label detection falls back to OpenCV heuristics.
+- The installed ONNX artifact is a broad logistics baseline, not a validated five-class target-warehouse detector; unsupported parcel and label conditions still rely on conservative OpenCV heuristics.
 - Different conveyor backgrounds may reduce segmentation accuracy.
 - Unseen courier-label layouts may reduce OCR quality.
 - Tiny, reflective, blurred, rotated, or occluded labels may require review.
@@ -403,7 +408,7 @@ Community Cloud uses instance-local, ephemeral storage. Completed checkpoints an
 - Free hosted infrastructure is not suitable for unlimited batches.
 - Streamlit Cloud jobs are not durable across application restarts.
 - No authentication or user-specific retention policy is included.
-- Accuracy targets cannot be claimed until human ground truth and the frozen test evaluation are complete.
+- The published private-set metrics describe only the labelled evaluation cohort and must not be presented as general unseen-warehouse accuracy.
 
 ## Production Scaling Path
 
